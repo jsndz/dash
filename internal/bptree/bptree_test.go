@@ -36,7 +36,7 @@ func TestInsert1(t *testing.T) {
 		cmd := tree.Search("la")
 
 		if cmd != nil {
-			t.Errorf(" expected nil search  %s", "la")
+			t.Errorf(" expected nil search  %s got %v", "la", cmd)
 		}
 	})
 }

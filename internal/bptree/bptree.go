@@ -1,6 +1,7 @@
 package bptree
 
 import (
+	"sort"
 	"time"
 )
 
@@ -47,13 +48,13 @@ func NewTree() *Bptree {
 */
 
 func (tree *Bptree) Search(command string) *Command {
-
-	for _, key := range tree.Root.Values {
-		if key.Text == command {
-			return key
-		}
+	vals := tree.Root.Values
+	index := sort.Search(len(vals), func(i int) bool {
+		return tree.Root.Values[i].Text >= command
+	})
+	if index < len(vals) && vals[index].Text == command {
+		return vals[index]
 	}
-
 	return nil
 }
 
@@ -70,14 +71,11 @@ func (tree *Bptree) Insert(cmdText string) {
 		return
 	}
 
-	for i, k := range node.Values {
-		if k.Text > cmdText {
+	i := sort.Search(len(node.Values), func(i int) bool {
+		return node.Values[i].Text > cmdText
+	})
 
-			node.Values = append(node.Values, nil)
-			copy(node.Values[i+1:], node.Values[i:])
-			node.Values[i] = command
-			break
-		}
-	}
-
+	node.Values = append(node.Values, nil)
+	copy(node.Values[i+1:], node.Values[i:])
+	node.Values[i] = command
 }
