@@ -29,9 +29,9 @@ type Node struct {
 func NewTree() *Bptree {
 	root := &Node{
 		IsLeaf:   true,
-		Keys:     make([]string, 0, 10),
-		Children: make([]*Node, 0, 10),
-		Values:   make([]*Command, 0, 10),
+		Keys:     make([]string, 0, MAX),
+		Children: make([]*Node, 0, MAX+1),
+		Values:   make([]*Command, 0, MAX),
 	}
 	return &Bptree{Root: root}
 }
@@ -47,13 +47,23 @@ func NewTree() *Bptree {
    [10 20]   [30 40]
 */
 
-func (tree *Bptree) Search(command string) *Command {
-	vals := tree.Root.Values
-	index := sort.Search(len(vals), func(i int) bool {
-		return tree.Root.Values[i].Text >= command
+func (tree *Bptree) Search(command string, node *Node) *Command {
+	if node.IsLeaf {
+		return tree.SearchLeafNode(command, node)
+	}
+	index := sort.Search(len(node.Keys), func(i int) bool {
+		return node.Keys[i] > command
 	})
-	if index < len(vals) && vals[index].Text == command {
-		return vals[index]
+	return tree.Search(command, node.Children[index])
+}
+
+func (tree *Bptree) SearchLeafNode(command string, node *Node) *Command {
+
+	index := sort.Search(len(node.Keys), func(i int) bool {
+		return node.Keys[i] >= command
+	})
+	if index < len(node.Keys) && node.Keys[index] == command {
+		return node.Values[index]
 	}
 	return nil
 }
