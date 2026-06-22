@@ -1,4 +1,4 @@
-package bptree
+package tree
 
 import (
 	"log"
@@ -153,10 +153,15 @@ func (tree *Bptree) InsertToInternal(parent *Node, key string, child *Node) {
 	parent.Children = append(parent.Children, nil)
 	copy(parent.Children[i+2:], parent.Children[i+1:])
 	parent.Children[i+1] = child
-	if parent.Parent != nil && len(parent.Keys) > tree.MaxSize {
+	if len(parent.Keys) > tree.MaxSize {
 		// split the parent node and insert the key to the grandparent
+		// if parent.Parent != nil {
 		log.Printf("InsertToInternal: parent keys exceed MaxSize, splitting parent")
 		tree.SplitAndInsertToInternal(parent)
+		// } else {
+		// 	log.Printf("InsertToInternal: parent is root and keys exceed MaxSize, creating new root")
+		// 	tree.CreateNewParentNode(parent)
+		// }
 	}
 }
 
@@ -164,8 +169,8 @@ func (tree *Bptree) SplitAndInsertToInternal(node *Node) {
 	log.Printf("SplitAndInsertToInternal: node.Keys=%v", node.Keys)
 	rightNode := NewNode(false)
 	mid := len(node.Keys) / 2
-
-	rightNode.Keys = append(rightNode.Keys, node.Keys[mid:]...)
+	promotedKey := node.Keys[mid]
+	rightNode.Keys = append(rightNode.Keys, node.Keys[mid+1:]...)
 	node.Keys = node.Keys[:mid]
 
 	rightNode.Children = append(rightNode.Children, node.Children[mid+1:]...)
@@ -175,15 +180,27 @@ func (tree *Bptree) SplitAndInsertToInternal(node *Node) {
 		child.Parent = rightNode
 	}
 	if node.Parent != nil {
-		log.Printf("SplitAndInsertToInternal: transferring key=%q to parent", rightNode.Keys[0])
-		tree.InsertToInternal(node.Parent, rightNode.Keys[0], rightNode)
+		log.Printf("SplitAndInsertToInternal: transferring key=%q to parent", promotedKey)
+		tree.InsertToInternal(node.Parent, promotedKey, rightNode)
 	} else {
 		log.Printf("SplitAndInsertToInternal: creating new root parent node")
-		tree.CreateNewParentNode(node, rightNode)
+		tree.CreateNewParentNode(node, rightNode, promotedKey)
 	}
 }
 
-func (tree *Bptree) CreateNewParentNode(leftNode, rightNode *Node) {
+func (tree *Bptree) CreateNewParentNode(leftNode, rightNode *Node, promotedKey string) {
+	log.Printf("CreateNewParentNode: leftNode.Keys=%v, rightNode.Keys=%v", leftNode.Keys, rightNode.Keys)
+	parentNode := NewNode(false)
+	leftNode.Parent = parentNode
+	rightNode.Parent = parentNode
+	parentNode.Keys = append(parentNode.Keys, promotedKey)
+	parentNode.Children = append(parentNode.Children, leftNode, rightNode)
+
+	tree.Root = parentNode
+	log.Printf("CreateNewParentNode: new root created with keys=%v", tree.Root.Keys)
+}
+
+func (tree *Bptree) CreateNewParentNodeForLeaf(leftNode, rightNode *Node) {
 	log.Printf("CreateNewParentNode: leftNode.Keys=%v, rightNode.Keys=%v", leftNode.Keys, rightNode.Keys)
 	parentNode := NewNode(false)
 	leftNode.Parent = parentNode
@@ -219,7 +236,7 @@ func (tree *Bptree) SplitAndInsertToLeaf(leafNode *Node, cmdText string) {
 		tree.InsertToInternal(leafNode.Parent, rightNode.Keys[0], rightNode)
 	} else {
 		log.Printf("SplitAndInsertToLeaf: parent does not exist, creating new parent node with key=%q", rightNode.Keys[0])
-		tree.CreateNewParentNode(leafNode, rightNode)
+		tree.CreateNewParentNodeForLeaf(leafNode, rightNode)
 	}
 }
 
@@ -232,8 +249,8 @@ func (tree *Bptree) InsertIncreaseFrequency(command *Command) {
 func (tree *Bptree) InsertIntoLeaf(node *Node, cmdText string) {
 	log.Printf("InsertIntoLeaf: node.Keys=%v, cmdText=%q", node.Keys, cmdText)
 
-	i := sort.Search(len(node.Values), func(i int) bool {
-		return node.Values[i].Text >= cmdText
+	i := sort.Search(len(node.Keys), func(i int) bool {
+		return node.Keys[i] >= cmdText
 	})
 	// if key exist directly increase frequency
 	if i < len(node.Keys) && node.Keys[i] == cmdText {

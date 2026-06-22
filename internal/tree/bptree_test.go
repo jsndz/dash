@@ -1,4 +1,4 @@
-package bptree
+package tree
 
 import (
 	"fmt"
@@ -176,4 +176,51 @@ func TestInsert(t *testing.T) {
 		}
 	})
 
+}
+
+func TestBptree_SearchAfterInternalSplit(t *testing.T) {
+	// Construct a tree with MaxSize = 2
+	tr := NewTree(2, 1)
+
+	// Insert elements sequentially to force an internal node split
+	tr.Insert("A")
+	tr.Insert("B")
+	tr.Insert("C")
+	tr.Insert("D")
+	tr.Insert("E")
+
+	// Validate structural integrity
+	validate(tr.Root)
+
+	// Try to find "C"
+	cmd := tr.Search("C", tr.Root)
+	if cmd == nil {
+		t.Fatalf("FAIL: Command 'C' was not found in the tree, but it should be present!")
+	} else {
+		t.Logf("SUCCESS: Found command %s", cmd.Text)
+	}
+}
+
+func TestBptree_StructureAndSearch(t *testing.T) {
+	// 1. Initialize tree with MaxSize = 2
+	tr := NewTree(2, 1)
+
+	// 2. Insert sequential elements to force a split up to the root level
+	commands := []string{"A", "B", "C", "D", "E"}
+	for _, cmd := range commands {
+		tr.Insert(cmd)
+	}
+
+	// 3. Verify tree structure properties via your validate function
+	validate(tr.Root)
+
+	// 4. Test searching for existing items
+	for _, cmd := range commands {
+		found := tr.Search(cmd, tr.Root)
+		if found == nil {
+			t.Errorf("Expected to find key %q, but got nil", cmd)
+		} else if found.Text != cmd {
+			t.Errorf("Expected key %q, but retrieved %q", cmd, found.Text)
+		}
+	}
 }
