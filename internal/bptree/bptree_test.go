@@ -1,6 +1,8 @@
 package bptree
 
 import (
+	"fmt"
+	"math/rand"
 	"testing"
 )
 
@@ -154,4 +156,24 @@ func TestInsert(t *testing.T) {
 			t.Errorf("Expected frequency 2, got %d", cmd.Frequency)
 		}
 	})
+	t.Run("random inserts and invariant checks", func(t *testing.T) {
+		tree := NewTree(MAX, MIN)
+		inserted := make(map[string]bool)
+
+		// Insert 100 random keys
+		for i := 0; i < 10000; i++ {
+			key := fmt.Sprintf("cmd-%d", rand.Intn(1000))
+			tree.Insert(key)
+			inserted[key] = true
+		}
+
+		// 1. Check search correctness
+		for key := range inserted {
+			res := tree.Search(key, tree.Root)
+			if res == nil || res.Text != key {
+				t.Errorf("Expected to find key %s", key)
+			}
+		}
+	})
+
 }
