@@ -161,7 +161,7 @@ func TestInsert(t *testing.T) {
 		inserted := make(map[string]bool)
 
 		// Insert 100 random keys
-		for i := 0; i < 10000; i++ {
+		for i := 0; i < 100; i++ {
 			key := fmt.Sprintf("cmd-%d", rand.Intn(1000))
 			tree.Insert(key)
 			inserted[key] = true

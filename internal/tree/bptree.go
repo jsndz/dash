@@ -127,7 +127,7 @@ func (tree *Bptree) Insert(cmdText string) {
 	node := tree.Root
 	// you have root search for >= in the node keys
 	leafNode := FindLeaf(node, cmdText)
-	if len(leafNode.Keys) == tree.MaxSize {
+	if len(leafNode.Keys) > tree.MaxSize {
 		log.Printf("Insert: leafNode at max size, splitting")
 		tree.SplitAndInsertToLeaf(leafNode, cmdText)
 		return
@@ -154,14 +154,10 @@ func (tree *Bptree) InsertToInternal(parent *Node, key string, child *Node) {
 	copy(parent.Children[i+2:], parent.Children[i+1:])
 	parent.Children[i+1] = child
 	if len(parent.Keys) > tree.MaxSize {
-		// split the parent node and insert the key to the grandparent
-		// if parent.Parent != nil {
+
 		log.Printf("InsertToInternal: parent keys exceed MaxSize, splitting parent")
 		tree.SplitAndInsertToInternal(parent)
-		// } else {
-		// 	log.Printf("InsertToInternal: parent is root and keys exceed MaxSize, creating new root")
-		// 	tree.CreateNewParentNode(parent)
-		// }
+
 	}
 }
 
