@@ -155,6 +155,7 @@ func (tree *Bptree) InsertToInternal(parent *Node, key string, child *Node) {
 	parent.Children = append(parent.Children, nil)
 	copy(parent.Children[i+2:], parent.Children[i+1:])
 	parent.Children[i+1] = child
+	child.Parent = parent
 	if len(parent.Keys) > tree.MaxSize {
 
 		log.Printf("InsertToInternal: parent keys exceed MaxSize, splitting parent")
@@ -283,6 +284,10 @@ func (tree *Bptree) RefreshSeparator(node *Node, childIndex int) {
 	newKey := node.Children[childIndex].Keys[0]
 	node.Keys[childIndex-1] = newKey
 }
+
+func (tree *Bptree) GetSeparatorIndex(Parent *Node, childIndex int) string {
+	return Parent.Keys[childIndex]
+}
 func ChildIndex(node *Node) int {
 	if node.Parent == nil {
 		return -1
@@ -298,128 +303,176 @@ func ChildIndex(node *Node) int {
 	return -1
 }
 
-func (tree *Bptree) BorrowOrMerge(node *Node) {
-	// first try borrowing left
-	if node.Prev != nil && len(node.Prev.Keys) > tree.MinSize {
+func (node *Node) getSiblings() (*Node, *Node) {
+	if node.Parent == nil {
+		return nil, nil
+	}
+	idx := ChildIndex(node)
+	if idx == -1 {
+		return nil, nil
+	}
+	var prev, next *Node
+	if idx > 0 {
+		prev = node.Parent.Children[idx-1]
+	}
+	if idx < len(node.Parent.Children)-1 {
+		next = node.Parent.Children[idx+1]
+	}
+	return prev, next
+}
 
+func (tree *Bptree) updateSeparator(node *Node, oldKey, newKey string) {
+	if oldKey == "" || oldKey == newKey {
+		return
+	}
+	curr := node
+	for curr.Parent != nil {
+		parent := curr.Parent
+		idx := ChildIndex(curr)
+		if idx > 0 {
+			if parent.Keys[idx-1] == oldKey {
+				parent.Keys[idx-1] = newKey
+				return
+			}
+		}
+		curr = parent
+	}
+}
+
+func (tree *Bptree) BorrowOrMerge(node *Node, oldKey string) {
+	prev, next := node.getSiblings()
+
+	if prev != nil && len(prev.Keys) > tree.MinSize {
+		// Borrow from left sibling
 		node.Keys = append(node.Keys, "")
 		copy(node.Keys[1:], node.Keys[:len(node.Keys)-1])
 		node.Values = append(node.Values, nil)
 		copy(node.Values[1:], node.Values[:len(node.Values)-1])
-		leftNode := node.Prev
-		borrowedKey := leftNode.Keys[len(leftNode.Keys)-1]
-		borrowedVal := leftNode.Values[len(leftNode.Keys)-1]
-		leftNode.Keys = leftNode.Keys[:len(leftNode.Keys)-1]
-		leftNode.Values = leftNode.Values[:len(leftNode.Values)-1]
+
+		borrowedKey := prev.Keys[len(prev.Keys)-1]
+		borrowedVal := prev.Values[len(prev.Keys)-1]
+		prev.Keys = prev.Keys[:len(prev.Keys)-1]
+		prev.Values = prev.Values[:len(prev.Values)-1]
 
 		node.Keys[0] = borrowedKey
 		node.Values[0] = borrowedVal
+
 		childIndex := ChildIndex(node)
-		tree.RefreshSeparator(node.Parent, childIndex)
-		return
-	} else if node.Next != nil && len(node.Next.Keys) > tree.MinSize {
-
-		node.Keys = append(node.Keys, "")
-		node.Values = append(node.Values, nil)
-		nextNode := node.Next
-		borrowedKey := nextNode.Keys[0]
-		borrowedVal := nextNode.Values[0]
-		//removing the borrowed node from the rightnode
-		copy(nextNode.Keys[:len(nextNode.Keys)-1], nextNode.Keys[1:])
-		nextNode.Keys = nextNode.Keys[:len(nextNode.Keys)-1]
-		copy(nextNode.Values[:len(nextNode.Values)-1], nextNode.Values[1:])
-		nextNode.Values = nextNode.Values[:len(nextNode.Values)-1]
-
-		node.Keys[len(node.Keys)-1] = borrowedKey
-		node.Values[len(node.Values)-1] = borrowedVal
-
-		childIndex := ChildIndex(nextNode)
-
-		tree.RefreshSeparator(node.Parent, childIndex)
+		node.Parent.Keys[childIndex-1] = node.Keys[0]
 		return
 	}
-	tree.MergeLeaf(node)
+
+	if next != nil && len(next.Keys) > tree.MinSize {
+		// Borrow from right sibling
+		borrowedKey := next.Keys[0]
+		borrowedVal := next.Values[0]
+
+		node.Keys = append(node.Keys, borrowedKey)
+		node.Values = append(node.Values, borrowedVal)
+
+		copy(next.Keys[:len(next.Keys)-1], next.Keys[1:])
+		next.Keys = next.Keys[:len(next.Keys)-1]
+		copy(next.Values[:len(next.Values)-1], next.Values[1:])
+		next.Values = next.Values[:len(next.Values)-1]
+
+		childIndex := ChildIndex(next)
+		node.Parent.Keys[childIndex-1] = next.Keys[0]
+
+		tree.updateSeparator(node, oldKey, node.Keys[0])
+		return
+	}
+
+	tree.MergeLeaf(node, oldKey)
 }
 
 func (tree *Bptree) BorrowOrMergeInternal(node *Node) {
-	//borrow
-	if node.Prev != nil && len(node.Prev.Keys) > tree.MinSize {
+	prev, next := node.getSiblings()
 
-		node.Keys = append(node.Keys, "")
-		copy(node.Keys[1:], node.Keys[:len(node.Keys)-1])
-		node.Children = append(node.Children, nil)
-		copy(node.Children[1:], node.Children[:len(node.Children)-1])
-		leftNode := node.Prev
-		borrowedKey := leftNode.Keys[len(leftNode.Keys)-1]
-		borrowedChildren := leftNode.Children[len(leftNode.Keys)-1]
-		leftNode.Keys = leftNode.Keys[:len(leftNode.Keys)-1]
-		leftNode.Children = leftNode.Children[:len(leftNode.Children)-1]
+	if prev != nil && len(prev.Keys) > tree.MinSize {
+		// Borrow from left sibling
+		childIndex := ChildIndex(prev)
+		separator := tree.GetSeparatorIndex(node.Parent, childIndex)
 
-		node.Keys[0] = borrowedKey
-		node.Children[0] = borrowedChildren
-		childIndex := ChildIndex(node)
-		tree.RefreshSeparator(node.Parent, childIndex)
-		return
-	} else if node.Next != nil && len(node.Next.Keys) > tree.MinSize {
+		node.Keys = append([]string{separator}, node.Keys...)
+		node.Parent.Keys[childIndex] = prev.Keys[len(prev.Keys)-1]
 
-		node.Keys = append(node.Keys, "")
-		node.Children = append(node.Children, nil)
-		nextNode := node.Next
-		borrowedKey := nextNode.Keys[0]
-		borrowedChildren := nextNode.Children[0]
-		//removing the borrowed node from the rightnode
-		copy(nextNode.Keys[:len(nextNode.Keys)-1], nextNode.Keys[1:])
-		nextNode.Keys = nextNode.Keys[:len(nextNode.Keys)-1]
-		copy(nextNode.Children[:len(nextNode.Children)-1], nextNode.Children[1:])
-		nextNode.Children = nextNode.Children[:len(nextNode.Children)-1]
+		borrowedChild := prev.Children[len(prev.Children)-1]
+		node.Children = append([]*Node{borrowedChild}, node.Children...)
+		borrowedChild.Parent = node
 
-		node.Keys[len(node.Keys)-1] = borrowedKey
-		node.Children[len(node.Children)-1] = borrowedChildren
-
-		childIndex := ChildIndex(nextNode)
-
-		tree.RefreshSeparator(node.Parent, childIndex)
+		prev.Keys = prev.Keys[:len(prev.Keys)-1]
+		prev.Children = prev.Children[:len(prev.Children)-1]
 		return
 	}
-	if node.Prev != nil {
-		leftNode := node.Prev
-		leftNode.Keys = append(leftNode.Keys, node.Keys...)
-		leftNode.Children = append(leftNode.Children, node.Children...)
 
+	if next != nil && len(next.Keys) > tree.MinSize {
+		// Borrow from right sibling
 		childIndex := ChildIndex(node)
+		separator := tree.GetSeparatorIndex(node.Parent, childIndex)
 
-		node.Parent.Keys = append(node.Parent.Keys[:childIndex-1], node.Parent.Keys[childIndex:]...)
-		node.Parent.Children = append(node.Parent.Children[:childIndex], node.Parent.Children[childIndex+1:]...)
-		leftNode.Next = node.Next
-		if node.Next != nil {
-			node.Next.Prev = leftNode
+		node.Keys = append(node.Keys, separator)
+		borrowedChild := next.Children[0]
+		node.Children = append(node.Children, borrowedChild)
+		borrowedChild.Parent = node
+
+		node.Parent.Keys[childIndex] = next.Keys[0]
+
+		next.Keys = next.Keys[1:]
+		next.Children = next.Children[1:]
+		return
+	}
+
+	// Merge
+	if prev != nil {
+		childIndex := ChildIndex(prev)
+		separator := tree.GetSeparatorIndex(node.Parent, childIndex)
+
+		copy(node.Parent.Keys[childIndex:], node.Parent.Keys[childIndex+1:])
+		node.Parent.Keys = node.Parent.Keys[:len(node.Parent.Keys)-1]
+		copy(node.Parent.Children[childIndex+1:], node.Parent.Children[childIndex+2:])
+		node.Parent.Children = node.Parent.Children[:len(node.Parent.Children)-1]
+
+		prev.Keys = append(prev.Keys, separator)
+		prev.Keys = append(prev.Keys, node.Keys...)
+		prev.Children = append(prev.Children, node.Children...)
+		for _, child := range node.Children {
+			child.Parent = prev
+		}
+
+		if node.Parent != nil && node.Parent != tree.Root && len(node.Parent.Keys) < tree.MinSize {
+			tree.BorrowOrMergeInternal(node.Parent)
 		}
 		return
 	}
-	if node.Next != nil {
-		nextNode := node.Next
-		node.Keys = append(node.Keys, nextNode.Keys...)
-		node.Children = append(node.Children, nextNode.Children...)
 
-		// just remove the separator the position will come into place
+	if next != nil {
 		childIndex := ChildIndex(node)
+		separator := tree.GetSeparatorIndex(node.Parent, childIndex)
 
-		node.Parent.Keys = append(node.Parent.Keys[:childIndex], node.Parent.Keys[childIndex+1:]...)
-		node.Parent.Children = append(node.Parent.Children[:childIndex+1], node.Parent.Children[childIndex+2:]...)
+		node.Keys = append(node.Keys, separator)
+		for _, child := range next.Children {
+			child.Parent = node
+		}
+		node.Keys = append(node.Keys, next.Keys...)
+		node.Children = append(node.Children, next.Children...)
 
-		node.Next = nextNode.Next
-		if nextNode.Next != nil {
-			nextNode.Next.Prev = node
+		copy(node.Parent.Keys[childIndex:], node.Parent.Keys[childIndex+1:])
+		node.Parent.Keys = node.Parent.Keys[:len(node.Parent.Keys)-1]
+		copy(node.Parent.Children[childIndex+1:], node.Parent.Children[childIndex+2:])
+		node.Parent.Children = node.Parent.Children[:len(node.Parent.Children)-1]
+
+		if node.Parent != nil && node.Parent != tree.Root && len(node.Parent.Keys) < tree.MinSize {
+			tree.BorrowOrMergeInternal(node.Parent)
 		}
 		return
-	}
-	if node.Parent != nil && len(node.Parent.Keys) < tree.MinSize {
-		tree.BorrowOrMergeInternal(node.Parent)
 	}
 }
-func (tree *Bptree) MergeLeaf(node *Node) {
-	if node.Prev != nil {
-		leftNode := node.Prev
+
+func (tree *Bptree) MergeLeaf(node *Node, oldKey string) {
+	prev, next := node.getSiblings()
+
+	if prev != nil {
+		leftNode := prev
 		leftNode.Keys = append(leftNode.Keys, node.Keys...)
 		leftNode.Values = append(leftNode.Values, node.Values...)
 
@@ -427,21 +480,23 @@ func (tree *Bptree) MergeLeaf(node *Node) {
 
 		node.Parent.Keys = append(node.Parent.Keys[:childIndex-1], node.Parent.Keys[childIndex:]...)
 		node.Parent.Children = append(node.Parent.Children[:childIndex], node.Parent.Children[childIndex+1:]...)
+
 		leftNode.Next = node.Next
 		if node.Next != nil {
 			node.Next.Prev = leftNode
 		}
-		if leftNode.Parent != nil && len(leftNode.Parent.Keys) < tree.MinSize {
+
+		if leftNode.Parent != nil && leftNode.Parent != tree.Root && len(leftNode.Parent.Keys) < tree.MinSize {
 			tree.BorrowOrMergeInternal(leftNode.Parent)
 		}
 		return
 	}
-	if node.Next != nil {
-		nextNode := node.Next
+
+	if next != nil {
+		nextNode := next
 		node.Keys = append(node.Keys, nextNode.Keys...)
 		node.Values = append(node.Values, nextNode.Values...)
 
-		// just remove the separator the position will come into place
 		childIndex := ChildIndex(node)
 
 		node.Parent.Keys = append(node.Parent.Keys[:childIndex], node.Parent.Keys[childIndex+1:]...)
@@ -451,12 +506,16 @@ func (tree *Bptree) MergeLeaf(node *Node) {
 		if nextNode.Next != nil {
 			nextNode.Next.Prev = node
 		}
-		if nextNode.Parent != nil && len(nextNode.Parent.Keys) < tree.MinSize {
-			tree.BorrowOrMergeInternal(nextNode.Parent)
+
+		tree.updateSeparator(node, oldKey, node.Keys[0])
+
+		if node.Parent != nil && node.Parent != tree.Root && len(node.Parent.Keys) < tree.MinSize {
+			tree.BorrowOrMergeInternal(node.Parent)
 		}
 		return
 	}
 }
+
 func (tree *Bptree) Delete(cmd string) error {
 	node := tree.FindLeaf(tree.Root, cmd)
 
@@ -467,20 +526,29 @@ func (tree *Bptree) Delete(cmd string) error {
 		return errors.New("Command not found")
 	}
 
+	oldKey := node.Keys[0]
+
+	// Delete from leaf
 	copy(node.Keys[i:], node.Keys[i+1:])
 	copy(node.Values[i:], node.Values[i+1:])
 	node.Keys = node.Keys[:len(node.Keys)-1]
 	node.Values = node.Values[:len(node.Values)-1]
 
-	if node.Parent != nil {
-		node.Parent.Keys = append(node.Parent.Keys[:i], node.Parent.Keys[i+1:]...)
-		node.Parent.Children = append(node.Parent.Children[:i], node.Parent.Children[i+1:]...)
-	}
-	if node.Parent == nil {
-		return nil
-	}
 	if node != tree.Root && len(node.Keys) < tree.MinSize {
-		tree.BorrowOrMerge(node)
+		tree.BorrowOrMerge(node, oldKey)
+	} else {
+		if len(node.Keys) > 0 && node.Keys[0] != oldKey {
+			tree.updateSeparator(node, oldKey, node.Keys[0])
+		}
+	}
+
+	if tree.Root.Parent != nil {
+		tree.Root.Parent = nil
+	}
+
+	if !tree.Root.IsLeaf && len(tree.Root.Keys) == 0 {
+		tree.Root = tree.Root.Children[0]
+		tree.Root.Parent = nil
 	}
 	return nil
 }
@@ -500,6 +568,9 @@ func validate(node *Node) {
 	}
 
 	for _, child := range node.Children {
+		if child.Parent != node {
+			log.Fatal("bad parent pointer")
+		}
 		validate(child)
 	}
 }

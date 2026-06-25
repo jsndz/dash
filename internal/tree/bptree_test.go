@@ -224,3 +224,178 @@ func TestBptree_StructureAndSearch(t *testing.T) {
 		}
 	}
 }
+
+func TestDelete(t *testing.T) {
+	t.Run("Delete from leaf-only tree", func(t *testing.T) {
+		tree := NewTree(3, 1) // MaxSize=3, MinSize=1
+		tree.Insert("A")
+		tree.Insert("B")
+		tree.Insert("C")
+
+		err := tree.Delete("B")
+		if err != nil {
+			t.Fatalf("Failed to delete B: %v", err)
+		}
+
+		if tree.Search("B", tree.Root) != nil {
+			t.Errorf("Expected B to be deleted")
+		}
+		if tree.Search("A", tree.Root) == nil || tree.Search("C", tree.Root) == nil {
+			t.Errorf("A or C was lost")
+		}
+	})
+
+	t.Run("Delete causing borrow from left", func(t *testing.T) {
+		tree := NewTree(3, 1)
+		// Insert enough to split and have siblings
+		tree.Insert("A")
+		tree.Insert("B")
+		tree.Insert("C")
+		tree.Insert("D")
+		// Structure should be:
+		// Parent: [C]
+		// Children: [A B], [C D]
+
+		err := tree.Delete("D")
+		if err != nil {
+			t.Fatalf("Failed to delete D: %v", err)
+		}
+		// [C D] has 1 element left (C), which is >= MinSize(1). So no borrow/merge needed yet.
+
+		err = tree.Delete("C")
+		if err != nil {
+			t.Fatalf("Failed to delete C: %v", err)
+		}
+		// Now right node is empty (< MinSize 1), should borrow "B" from left node [A B].
+		// New right node: [B]
+		// New left node: [A]
+		// Parent separator: [B]
+
+		validate(tree.Root)
+
+		if tree.Search("C", tree.Root) != nil {
+			t.Errorf("C should be deleted")
+		}
+		if tree.Search("B", tree.Root) == nil || tree.Search("A", tree.Root) == nil {
+			t.Errorf("A or B was lost")
+		}
+	})
+
+	t.Run("Delete causing borrow from right", func(t *testing.T) {
+		tree := NewTree(3, 1)
+		tree.Insert("A")
+		tree.Insert("B")
+		tree.Insert("C")
+		tree.Insert("D")
+		// Parent: [C]
+		// Children: [A B], [C D]
+
+		err := tree.Delete("A")
+		if err != nil {
+			t.Fatalf("Failed to delete A: %v", err)
+		}
+		// Left child is [B], right is [C D]. Both >= MinSize.
+
+		err = tree.Delete("B")
+		if err != nil {
+			t.Fatalf("Failed to delete B: %v", err)
+		}
+		// Left child is empty, borrows "C" from right child [C D].
+		// New left: [C]
+		// New right: [D]
+		// Parent separator: [D]
+
+		validate(tree.Root)
+
+		if tree.Search("B", tree.Root) != nil {
+			t.Errorf("B should be deleted")
+		}
+		if tree.Search("C", tree.Root) == nil || tree.Search("D", tree.Root) == nil {
+			t.Errorf("C or D was lost")
+		}
+	})
+
+	t.Run("Delete causing merge", func(t *testing.T) {
+		tree := NewTree(3, 1)
+		tree.Insert("A")
+		tree.Insert("B")
+		tree.Insert("C")
+		tree.Insert("D")
+		// Parent: [C]
+		// Children: [A B], [C D]
+
+		// Delete D, right child becomes [C]
+		tree.Delete("D")
+		// Delete A, left child becomes [B]
+		tree.Delete("A")
+		// Delete B, left child is empty. Right child has only [C] (length 1 = MinSize), so cannot borrow.
+		// Left and right must merge.
+		err := tree.Delete("B")
+		if err != nil {
+			t.Fatalf("Failed to delete B: %v", err)
+		}
+
+		validate(tree.Root)
+
+		if tree.Search("B", tree.Root) != nil {
+			t.Errorf("B should be deleted")
+		}
+		if tree.Search("C", tree.Root) == nil {
+			t.Errorf("C was lost")
+		}
+		// Height should shrink, root should be leaf again
+		if !tree.Root.IsLeaf {
+			t.Errorf("Expected root to shrink to a leaf node")
+		}
+	})
+
+	t.Run("Comprehensive random insert and delete", func(t *testing.T) {
+		tree := NewTree(4, 2)
+		inserted := make(map[string]bool)
+
+		// Insert 50 unique keys
+		for len(inserted) < 50 {
+			key := fmt.Sprintf("k-%d", rand.Intn(200))
+			if !inserted[key] {
+				tree.Insert(key)
+				inserted[key] = true
+			}
+		}
+
+		validate(tree.Root)
+
+		// Delete them one by one in random order
+		var keys []string
+		for k := range inserted {
+			keys = append(keys, k)
+		}
+		rand.Shuffle(len(keys), func(i, j int) {
+			keys[i], keys[j] = keys[j], keys[i]
+		})
+
+		for _, key := range keys {
+			err := tree.Delete(key)
+			if err != nil {
+				t.Fatalf("Failed to delete key %q: %v", key, err)
+			}
+			delete(inserted, key)
+
+			// Validate tree invariants
+			validate(tree.Root)
+
+			// Verify all remaining keys are still searchable
+			for k := range inserted {
+				res := tree.Search(k, tree.Root)
+				if res == nil || res.Text != k {
+					t.Fatalf("Expected key %q to be present after deleting %q", k, key)
+				}
+			}
+
+			// Verify deleted key is not searchable
+			if tree.Search(key, tree.Root) != nil {
+				t.Fatalf("Deleted key %q is still searchable", key)
+			}
+		}
+	})
+}
+
