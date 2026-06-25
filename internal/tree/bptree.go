@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -551,6 +552,31 @@ func (tree *Bptree) Delete(cmd string) error {
 		tree.Root.Parent = nil
 	}
 	return nil
+}
+
+func (tree *Bptree) RangeScan(prefix string) []*Command {
+	node := tree.FindLeaf(tree.Root, prefix)
+	if node == nil {
+		return nil
+	}
+
+	i := sort.Search(len(node.Keys), func(i int) bool {
+		return node.Keys[i] >= prefix
+	})
+
+	var result []*Command
+	for node != nil {
+		for i < len(node.Keys) {
+			if !strings.HasPrefix(node.Keys[i], prefix) {
+				return result
+			}
+			result = append(result, node.Values[i])
+			i++
+		}
+		node = node.Next
+		i = 0
+	}
+	return result
 }
 
 func validate(node *Node) {

@@ -399,3 +399,37 @@ func TestDelete(t *testing.T) {
 	})
 }
 
+func TestRangeSearch(t *testing.T) {
+	tree := NewTree(3, 1)
+	commands := []string{"git add", "git commit", "git checkout", "docker ps", "docker stop", "npm run dev"}
+	for _, cmd := range commands {
+		tree.Insert(cmd)
+	}
+
+	t.Run("prefix matches multiple", func(t *testing.T) {
+		results := tree.RangeScan("git c")
+		expected := []string{"git checkout", "git commit"} // alphabetical order
+		if len(results) != len(expected) {
+			t.Fatalf("Expected %d results, got %d", len(expected), len(results))
+		}
+		for i, exp := range expected {
+			if results[i].Text != exp {
+				t.Errorf("At index %d: expected %q, got %q", i, exp, results[i].Text)
+			}
+		}
+	})
+
+	t.Run("prefix matches single", func(t *testing.T) {
+		results := tree.RangeScan("npm")
+		if len(results) != 1 || results[0].Text != "npm run dev" {
+			t.Errorf("Expected only [npm run dev], got %v", results)
+		}
+	})
+
+	t.Run("prefix matches none", func(t *testing.T) {
+		results := tree.RangeScan("xyz")
+		if len(results) != 0 {
+			t.Errorf("Expected empty results, got %v", results)
+		}
+	})
+}
