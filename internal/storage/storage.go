@@ -43,7 +43,7 @@ func Generate(t *tree.Bptree) *Disktree {
 
 func SetupMap(treemap map[*tree.Node]uint64, node *tree.Node, id *uint64) {
 	treemap[node] = *id
-	*id++
+	*id = *id + 1
 
 	for _, node := range node.Children {
 		SetupMap(treemap, node, id)
