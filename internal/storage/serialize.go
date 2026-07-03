@@ -32,9 +32,9 @@ func SerializeDiskNode(node *DiskNode) ([]byte, error) {
 	binary.Write(&buf, binary.LittleEndian, node.ParentID)
 	binary.Write(&buf, binary.LittleEndian, node.PrevID)
 	binary.Write(&buf, binary.LittleEndian, node.NextID)
-	binary.Write(&buf, binary.LittleEndian, len(node.Keys))
+	binary.Write(&buf, binary.LittleEndian, uint32(len(node.Keys)))
 	for _, key := range node.Keys {
-		binary.Write(&buf, binary.LittleEndian, len(key))
+		binary.Write(&buf, binary.LittleEndian, uint32(len(key)))
 		buf.WriteString(key)
 	}
 	if node.IsLeaf {

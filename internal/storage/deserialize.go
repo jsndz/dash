@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"dash/internal/tree"
 	"encoding/binary"
+	"io"
 	"time"
 )
 
@@ -23,7 +24,7 @@ func DeserializeDisktree(b []byte) *Disktree {
 		var nodeLen uint32
 		binary.Read(r, binary.LittleEndian, &nodeLen)
 		nodeBytes := make([]byte, nodeLen)
-		r.Read(nodeBytes)
+		io.ReadFull(r, nodeBytes)
 		tree.Nodes[i] = DeserializeDiskNode(nodeBytes)
 	}
 	return &tree
@@ -38,14 +39,14 @@ func DeserializeDiskNode(b []byte) *DiskNode {
 	binary.Read(r, binary.LittleEndian, &node.ParentID)
 	binary.Read(r, binary.LittleEndian, &node.PrevID)
 	binary.Read(r, binary.LittleEndian, &node.NextID)
-	var keyCount int
+	var keyCount uint32
 	binary.Read(r, binary.LittleEndian, &keyCount)
 	node.Keys = make([]string, keyCount)
-	for i := 0; i < keyCount; i++ {
-		var keyLen int
+	for i := 0; i < int(keyCount); i++ {
+		var keyLen uint32
 		binary.Read(r, binary.LittleEndian, &keyLen)
 		keyBytes := make([]byte, keyLen)
-		r.Read(keyBytes)
+		io.ReadFull(r, keyBytes)
 		node.Keys[i] = string(keyBytes)
 	}
 	if node.IsLeaf {
@@ -56,7 +57,7 @@ func DeserializeDiskNode(b []byte) *DiskNode {
 			var valLen int
 			binary.Read(r, binary.LittleEndian, &valLen)
 			valBytes := make([]byte, valLen)
-			r.Read(valBytes)
+			io.ReadFull(r, valBytes)
 			node.Values[i] = *DeserializeCommand(valBytes)
 		}
 	} else {
@@ -78,9 +79,10 @@ func DeserializeCommand(b []byte) *tree.Command {
 	binary.Read(r, binary.LittleEndian, &ts)
 	binary.Read(r, binary.LittleEndian, &frq)
 	binary.Read(r, binary.LittleEndian, &cmdLen)
-	data := b[20 : 20+cmdLen]
+	text := make([]byte, cmdLen)
+	io.ReadFull(r, text)
 	cmd := tree.Command{
-		Text:      string(data),
+		Text:      string(text),
 		LastUsed:  time.Unix(ts, 0),
 		Frequency: int(frq),
 	}
